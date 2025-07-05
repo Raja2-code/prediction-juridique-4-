@@ -1,50 +1,69 @@
-
 import streamlit as st
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import LabelEncoder
-import joblib
 
-# Charger les données d'entraînement
+# Charger les données
 df = pd.read_excel("Base_Litiges_PredictiveAI_ML.xlsx")
 
-# Encodage des variables catégorielles
-le_dict = {}
-for col in df.select_dtypes(include=['object']).columns:
-    le = LabelEncoder()
-    df[col] = le.fit_transform(df[col])
-    le_dict[col] = le
+# Préparation des données
+X = df.drop(columns=["Litige Probable"])
+y = df["Litige Probable"]
 
-# Séparer X et y
-X = df.drop(columns=["Issue"])
-y = df["Issue"]
+# Encodage des colonnes catégorielles
+X_encoded = pd.get_dummies(X)
 
-# Entraîner le modèle
+# Entraînement du modèle
 model = RandomForestClassifier()
-model.fit(X, y)
+model.fit(X_encoded, y)
 
-# Interface utilisateur Streamlit
-st.title("🔮 Prédiction du Résultat d’un Litige")
+st.title("🧠 Prédiction Automatique de Litiges")
 
-# Champs de saisie utilisateur
-nouveau_dossier = {}
-for col in X.columns:
-    val = st.text_input(f"{col}")
-    if col in le_dict:
-        if val in le_dict[col].classes_:
-            nouveau_dossier[col] = le_dict[col].transform([val])[0]
-        else:
-            st.warning(f"Valeur inconnue pour '{col}'. Veuillez utiliser une valeur connue : {list(le_dict[col].classes_)}")
-            nouveau_dossier[col] = 0
+st.markdown("Ce formulaire permet de prédire si un nouveau dossier présente un risque de **litige probable**.")
+
+# Formulaire utilisateur
+with st.form("prediction_form"):
+    objet = st.text_input("Objet du litige")
+    tribunal = st.selectbox("Tribunal", df["Tribunal"].unique())
+    demandeur = st.text_input("Demandeur")
+    defendeur = st.text_input("Défendeur")
+    avocat_demandeur = st.selectbox("Avocat Demandeur", df["Avocat Demandeur"].unique())
+    avocat_defendeur = st.selectbox("Avocat Défendeur", df["Avocat Défendeur"].unique())
+    date_depot = st.date_input("Date de dépôt")
+    montant_reclame = st.number_input("Montant réclamé", min_value=0.0)
+    clause_confidentialite = st.selectbox("Clause de confidentialité", ["Oui", "Non"])
+    retards = st.selectbox("Retards signalés", ["Oui", "Non"])
+    mediation = st.selectbox("Médiation tentée", ["Oui", "Non"])
+    montant_accorde = st.number_input("Montant accordé", min_value=0.0)
+    president = st.selectbox("Président de la chambre", df["Président de la chambre"].unique())
+    decision = st.selectbox("Décision rendue", df["Décision rendue"].unique())
+
+    submitted = st.form_submit_button("Prédire le litige")
+
+if submitted:
+    new_data = pd.DataFrame({
+        "Objet du litige": [objet],
+        "Tribunal": [tribunal],
+        "Demandeur": [demandeur],
+        "Défendeur": [defendeur],
+        "Avocat Demandeur": [avocat_demandeur],
+        "Avocat Défendeur": [avocat_defendeur],
+        "Date de dépôt": [date_depot],
+        "Montant réclamé": [montant_reclame],
+        "Clause de confidentialité": [clause_confidentialite],
+        "Retards signalés": [retards],
+        "Médiation tentée": [mediation],
+        "Montant accordé": [montant_accorde],
+        "Président de la chambre": [president],
+        "Décision rendue": [decision],
+    })
+
+    # Encodage du nouvel exemple pour correspondre aux colonnes d'entraînement
+    new_data_encoded = pd.get_dummies(new_data)
+    new_data_encoded = new_data_encoded.reindex(columns=X_encoded.columns, fill_value=0)
+
+    prediction = model.predict(new_data_encoded)[0]
+    st.subheader("Résultat de la prédiction :")
+    if prediction == "Oui":
+        st.error("⚠️ Risque élevé de litige probable")
     else:
-        try:
-            nouveau_dossier[col] = float(val)
-        except:
-            nouveau_dossier[col] = 0
-
-if st.button("Prédire le résultat"):
-    try:
-        prediction = model.predict([list(nouveau_dossier.values())])[0]
-        st.success(f"✅ Résultat prédit : {prediction}")
-    except Exception as e:
-        st.error("Erreur lors de la prédiction. Vérifiez vos entrées.")
+        st.success("✅ Litige peu probable")
